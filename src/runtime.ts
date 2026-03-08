@@ -137,6 +137,17 @@ export class KiroPluginRuntime {
     return syncFromManualImport(this.db, payload, this.config.default_region);
   }
 
+  async importFromKiroAuthFile(path?: string) {
+    await this.init();
+    const payload = {
+      id: path ? `manual:${path}` : undefined,
+      sessionFile: path,
+      tokenField: "accessToken",
+      expiresField: "expiresAt",
+    };
+    return syncFromManualImport(this.db, payload, this.config.default_region);
+  }
+
   async switchAccount(accountId: string | null) {
     await this.init();
     if (accountId !== null) {
@@ -169,7 +180,7 @@ export class KiroPluginRuntime {
     sessionID: string;
     agent: string;
     model: { id: string; providerID: string };
-    provider: { info: Provider };
+    provider: { info: Provider; options?: Record<string, unknown> };
     message: UserMessage;
   }): Promise<Record<string, string>> {
     await this.init();
@@ -177,17 +188,36 @@ export class KiroPluginRuntime {
       return {};
     }
 
-    const selection = await this.selectAndResolveAccount(
-      input.sessionID,
-      input.model.id,
-    );
-    this.db.markAccountUsed(selection.accountId);
-    return {
-      ...selection.headers,
-      "x-kiro-account-id": selection.accountId,
-      "x-kiro-model-id": input.model.id,
-      ...this.config.provider_headers,
-    };
+    try {
+      const selection = await this.selectAndResolveAccount(
+        input.sessionID,
+        input.model.id,
+      );
+      this.db.markAccountUsed(selection.accountId);
+      return {
+        ...selection.headers,
+        "x-kiro-account-id": selection.accountId,
+        "x-kiro-model-id": input.model.id,
+        ...this.config.provider_headers,
+      };
+    } catch {
+      const accessToken =
+        typeof input.provider.options?.accessToken === "string"
+          ? input.provider.options.accessToken
+          : typeof input.provider.options?.access === "string"
+            ? input.provider.options.access
+            : null;
+      if (!accessToken) {
+        throw new Error(
+          "No eligible Kiro account is available. Run `opencode auth login`, /kiro:sync, or /kiro:add.",
+        );
+      }
+      return {
+        authorization: `Bearer ${accessToken}`,
+        "x-kiro-model-id": input.model.id,
+        ...this.config.provider_headers,
+      };
+    }
   }
 
   async prepareChatParams(modelID: string, options: Record<string, unknown>) {

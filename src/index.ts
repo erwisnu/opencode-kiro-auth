@@ -6,6 +6,11 @@ import {
   formatSyncReports,
   readManualImportSource,
 } from "./runtime";
+import {
+  createKiroDeviceLogin,
+  findKiroAuthFile,
+  refreshKiroSocialToken,
+} from "./auth";
 
 export const KiroAuthPlugin: Plugin = async (ctx) => {
   const runtime = new KiroPluginRuntime(ctx);
@@ -39,6 +44,133 @@ export const KiroAuthPlugin: Plugin = async (ctx) => {
         input.model.id,
         output.options,
       );
+    },
+
+    auth: {
+      provider: "kiro",
+      async loader(auth) {
+        const credentials = await auth();
+        if (credentials.type === "oauth") {
+          return {
+            accessToken: credentials.access,
+            refreshToken: credentials.refresh,
+            expiresAt: credentials.expires,
+          };
+        }
+        if (credentials.type === "api") {
+          return {
+            importedAccount: credentials.key,
+          };
+        }
+        return {};
+      },
+      methods: [
+        {
+          type: "oauth",
+          label: "Login via Kiro Web",
+          prompts: [
+            {
+              type: "select",
+              key: "auth_method",
+              message: "Choose Kiro login method",
+              options: [
+                {
+                  label: "AWS Builder ID",
+                  value: "builder-id",
+                  hint: "Recommended for Kiro free tier",
+                },
+                {
+                  label: "AWS IAM Identity Center",
+                  value: "idc",
+                  hint: "Use custom start URL and region",
+                },
+              ],
+            },
+            {
+              type: "text",
+              key: "start_url",
+              message: "AWS start URL",
+              placeholder: "https://view.awsapps.com/start",
+              condition: (inputs) => inputs.auth_method === "idc",
+            },
+            {
+              type: "text",
+              key: "region",
+              message: "AWS region",
+              placeholder: "us-east-1",
+              condition: (inputs) => inputs.auth_method === "idc",
+            },
+          ],
+          async authorize(inputs) {
+            return createKiroDeviceLogin({
+              startUrl: inputs?.start_url,
+              region: inputs?.region,
+            });
+          },
+        },
+        {
+          type: "api",
+          label: "Import from Kiro Auth",
+          prompts: [
+            {
+              type: "text",
+              key: "path",
+              message: "Optional path to kiro-auth-token.json",
+              placeholder: "~/.aws/sso/cache/kiro-auth-token.json",
+            },
+          ],
+          async authorize(inputs) {
+            const filePath = await findKiroAuthFile(inputs?.path);
+            if (!filePath) {
+              return { type: "failed" as const };
+            }
+
+            const report = await runtime.importFromKiroAuthFile(filePath);
+            if (report.imported > 0) {
+              return {
+                type: "success" as const,
+                key: filePath,
+                provider: "kiro",
+              };
+            }
+
+            return { type: "failed" as const };
+          },
+        },
+        {
+          type: "api",
+          label: "Import Refresh Token",
+          prompts: [
+            {
+              type: "text",
+              key: "refresh_token",
+              message: "Paste Kiro refresh token",
+              placeholder: "aorAAAAAG...",
+              validate: (value) =>
+                value.startsWith("aorAAAAAG")
+                  ? undefined
+                  : "Kiro refresh token usually starts with aorAAAAAG",
+            },
+          ],
+          async authorize(inputs) {
+            const refreshToken = inputs?.refresh_token?.trim();
+            if (!refreshToken) {
+              return { type: "failed" as const };
+            }
+
+            const token = await refreshKiroSocialToken(refreshToken);
+            if (!token) {
+              return { type: "failed" as const };
+            }
+
+            return {
+              type: "success" as const,
+              key: refreshToken,
+              provider: "kiro",
+            };
+          },
+        },
+      ],
     },
 
     tool: {
