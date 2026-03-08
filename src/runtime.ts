@@ -180,11 +180,17 @@ export class KiroPluginRuntime {
     sessionID: string;
     agent: string;
     model: { id: string; providerID: string };
-    provider: { info: Provider; options?: Record<string, unknown> };
+    provider?: {
+      info?: Provider;
+      id?: string;
+      options?: Record<string, unknown>;
+      [key: string]: unknown;
+    };
     message: UserMessage;
   }): Promise<Record<string, string>> {
     await this.init();
-    if (input.provider.info.id !== "kiro") {
+    const providerId = this.getProviderId(input.provider, input.model);
+    if (providerId !== "kiro") {
       return {};
     }
 
@@ -201,11 +207,12 @@ export class KiroPluginRuntime {
         ...this.config.provider_headers,
       };
     } catch {
+      const providerOptions = this.getProviderOptions(input.provider);
       const accessToken =
-        typeof input.provider.options?.accessToken === "string"
-          ? input.provider.options.accessToken
-          : typeof input.provider.options?.access === "string"
-            ? input.provider.options.access
+        typeof providerOptions.accessToken === "string"
+          ? providerOptions.accessToken
+          : typeof providerOptions.access === "string"
+            ? providerOptions.access
             : null;
       if (!accessToken) {
         throw new Error(
@@ -424,6 +431,48 @@ export class KiroPluginRuntime {
         }),
       );
     }
+  }
+
+  private getProviderId(
+    provider: {
+      info?: Provider;
+      id?: string;
+      [key: string]: unknown;
+    } | undefined,
+    model: { providerID?: string },
+  ): string | null {
+    if (provider?.info?.id) {
+      return provider.info.id;
+    }
+    if (typeof provider?.id === "string") {
+      return provider.id;
+    }
+    if (typeof provider?.["providerID"] === "string") {
+      return provider["providerID"] as string;
+    }
+    if (typeof provider?.["providerId"] === "string") {
+      return provider["providerId"] as string;
+    }
+    if (typeof model.providerID === "string") {
+      return model.providerID;
+    }
+    return null;
+  }
+
+  private getProviderOptions(
+    provider:
+      | {
+          options?: Record<string, unknown>;
+          [key: string]: unknown;
+        }
+      | undefined,
+  ): Record<string, unknown> {
+    if (provider?.options && typeof provider.options === "object") {
+      return provider.options;
+    }
+    return provider && typeof provider === "object"
+      ? (provider as Record<string, unknown>)
+      : {};
   }
 }
 
