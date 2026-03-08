@@ -1,6 +1,6 @@
 {
   "name": "@erwisnu/opencode-kiro-auth",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenCode plugin for Kiro authentication, multi-account rotation, and quota tracking.",
   "type": "module",
   "main": "./dist/index.js",
