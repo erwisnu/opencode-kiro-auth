@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -31,11 +33,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+            echo "Tag version v$TAG_VERSION does not match package.json version $PACKAGE_VERSION"
+            exit 1
+          fi
+
       - name: Validate
         run: |
           npm run check
           npm test
           npm run build
+
+      - name: Inspect package contents
+        run: npm pack --dry-run
 
       - name: Publish to npm
         run: npm publish --access public

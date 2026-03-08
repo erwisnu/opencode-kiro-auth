@@ -20,9 +20,13 @@
     "README.md"
   ],
   "scripts": {
-    "build": "bun build ./src/index.ts ./src/provider/transport.ts --outdir ./dist --target bun",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build:js": "bun build ./src/index.ts ./src/provider/transport.ts --outdir ./dist --target bun",
+    "build:types": "tsc -p tsconfig.build.json",
+    "build": "npm run clean && npm run build:js && npm run build:types",
     "check": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "prepublishOnly": "npm run check && npm test && npm run build"
   },
   "dependencies": {
     "@opencode-ai/plugin": "1.2.21",
